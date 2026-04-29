@@ -19,72 +19,8 @@ def cube(sx, sy, sz):
     ]
     return v, f
 
-def cylinder(sx, sy, sz, seg=16):
-    r = max(sx, sy)/2
-    h = sz/2
-    v=[]; f=[]
-    for i in range(seg):
-        a = 2*math.pi*i/seg
-        x = math.cos(a)*r
-        y = math.sin(a)*r
-        v.append((x,y,-h))
-        v.append((x,y,h))
-    for i in range(seg):
-        a=i*2
-        b=((i+1)%seg)*2
-        f.append((a,b,a+1))
-        f.append((b,b+1,a+1))
-    return v,f
-
-def sphere(sx, sy, sz, rings=8, seg=16):
-    rx, ry, rz = sx/2, sy/2, sz/2
-    v=[]; f=[]
-    for i in range(rings+1):
-        phi = math.pi*i/rings
-        for j in range(seg):
-            theta = 2*math.pi*j/seg
-            v.append((
-                rx*math.sin(phi)*math.cos(theta),
-                ry*math.sin(phi)*math.sin(theta),
-                rz*math.cos(phi)
-            ))
-    for i in range(rings):
-        for j in range(seg):
-            a=i*seg+j
-            b=i*seg+(j+1)%seg
-            c=(i+1)*seg+j
-            d=(i+1)*seg+(j+1)%seg
-            f.append((a,c,b))
-            f.append((b,c,d))
-    return v,f
-
-def torus(sx, sy, sz, ring=16, tube=8):
-    R = sx/2
-    r = sy/4
-    v=[]; f=[]
-    for i in range(ring):
-        for j in range(tube):
-            u=2*math.pi*i/ring
-            v_ang=2*math.pi*j/tube
-            x=(R+r*math.cos(v_ang))*math.cos(u)
-            y=(R+r*math.cos(v_ang))*math.sin(u)
-            z=r*math.sin(v_ang)
-            v.append((x,y,z))
-    for i in range(ring):
-        for j in range(tube):
-            a=i*tube+j
-            b=i*tube+(j+1)%tube
-            c=((i+1)%ring)*tube+j
-            d=((i+1)%ring)*tube+(j+1)%tube
-            f.append((a,c,b))
-            f.append((b,c,d))
-    return v,f
-
 def build_shape(t, sx, sy, sz):
-    if t == 1: return cylinder(sx,sy,sz)
-    if t == 2: return sphere(sx,sy,sz)
-    if t == 3: return torus(sx,sy,sz)
-    return cube(sx,sy,sz)
+    return cube(sx, sy, sz)
 
 # ---------------- ROTATION ----------------
 def apply_rotation(v, q):
@@ -101,70 +37,73 @@ def apply_rotation(v, q):
 
 # ---------------- FINAL DAE ----------------
 def write_dae(path, verts, faces):
-    with open(path, "w") as f:
+    normals = []
+    normal_indices = []
+
+    for tri in faces:
+        a,b,c = tri
+        v1,v2,v3 = verts[a],verts[b],verts[c]
+
+        ux,uy,uz = v2[0]-v1[0],v2[1]-v1[1],v2[2]-v1[2]
+        vx,vy,vz = v3[0]-v1[0],v3[1]-v1[1],v3[2]-v1[2]
+
+        nx = uy*vz - uz*vy
+        ny = uz*vx - ux*vz
+        nz = ux*vy - uy*vx
+
+        l = max((nx*nx+ny*ny+nz*nz)**0.5,0.0001)
+        nx,ny,nz = nx/l,ny/l,nz/l
+
+        idx = len(normals)
+        normals.append((nx,ny,nz))
+        normal_indices.append((idx,idx,idx))
+
+    with open(path,"w") as f:
 
         f.write('<?xml version="1.0" encoding="utf-8"?>')
         f.write('<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">')
 
-        f.write('<library_geometries><geometry id="mesh" name="mesh"><mesh>')
+        f.write('<library_geometries><geometry id="mesh"><mesh>')
 
         # positions
-        f.write('<source id="pos">')
-        f.write(f'<float_array id="pos-array" count="{len(verts)*3}">')
-        for v in verts:
-            f.write(f'{v[0]} {v[1]} {v[2]} ')
+        f.write(f'<source id="pos"><float_array id="posa" count="{len(verts)*3}">')
+        for v in verts: f.write(f'{v[0]} {v[1]} {v[2]} ')
         f.write('</float_array>')
         f.write('<technique_common>')
-        f.write(f'<accessor source="#pos-array" count="{len(verts)}" stride="3">')
-        f.write('<param name="X" type="float"/>')
-        f.write('<param name="Y" type="float"/>')
-        f.write('<param name="Z" type="float"/>')
+        f.write(f'<accessor source="#posa" count="{len(verts)}" stride="3">')
+        f.write('<param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/>')
         f.write('</accessor></technique_common></source>')
 
         # normals
-        f.write('<source id="norm">')
-        f.write(f'<float_array id="norm-array" count="{len(verts)*3}">')
-        for v in verts:
-            l = max((v[0]**2+v[1]**2+v[2]**2)**0.5, 0.0001)
-            f.write(f'{v[0]/l} {v[1]/l} {v[2]/l} ')
+        f.write(f'<source id="norm"><float_array id="norma" count="{len(normals)*3}">')
+        for n in normals: f.write(f'{n[0]} {n[1]} {n[2]} ')
         f.write('</float_array>')
         f.write('<technique_common>')
-        f.write(f'<accessor source="#norm-array" count="{len(verts)}" stride="3">')
-        f.write('<param name="X" type="float"/>')
-        f.write('<param name="Y" type="float"/>')
-        f.write('<param name="Z" type="float"/>')
+        f.write(f'<accessor source="#norma" count="{len(normals)}" stride="3">')
+        f.write('<param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/>')
         f.write('</accessor></technique_common></source>')
 
-        f.write('<vertices id="vtx"><input semantic="POSITION" source="#pos"/></vertices>')
+        f.write('<vertices id="v"><input semantic="POSITION" source="#pos"/></vertices>')
 
         f.write(f'<triangles material="Material" count="{len(faces)}">')
-        f.write('<input semantic="VERTEX" source="#vtx" offset="0"/>')
+        f.write('<input semantic="VERTEX" source="#v" offset="0"/>')
         f.write('<input semantic="NORMAL" source="#norm" offset="1"/>')
         f.write('<p>')
-        for a,b,c in faces:
-            f.write(f'{a} {a} {b} {b} {c} {c} ')
+        for i,tri in enumerate(faces):
+            a,b,c = tri
+            na,nb,nc = normal_indices[i]
+            f.write(f'{a} {na} {b} {nb} {c} {nc} ')
         f.write('</p></triangles>')
 
         f.write('</mesh></geometry></library_geometries>')
 
-        # material
-        f.write('<library_materials>')
-        f.write('<material id="Material"><instance_effect url="#Material-effect"/></material>')
-        f.write('</library_materials>')
+        f.write('<library_materials><material id="Material"><instance_effect url="#Material-effect"/></material></library_materials>')
+        f.write('<library_effects><effect id="Material-effect"><profile_COMMON><technique sid="common"><lambert><diffuse><color>0.8 0.8 0.8 1</color></diffuse></lambert></technique></profile_COMMON></effect></library_effects>')
 
-        f.write('<library_effects>')
-        f.write('<effect id="Material-effect"><profile_COMMON><technique sid="common"><lambert>')
-        f.write('<diffuse><color>0.8 0.8 0.8 1</color></diffuse>')
-        f.write('</lambert></technique></profile_COMMON></effect>')
-        f.write('</library_effects>')
-
-        # scene
         f.write('<library_visual_scenes><visual_scene id="Scene"><node>')
-        f.write('<instance_geometry url="#mesh">')
-        f.write('<bind_material><technique_common>')
+        f.write('<instance_geometry url="#mesh"><bind_material><technique_common>')
         f.write('<instance_material symbol="Material" target="#Material"/>')
-        f.write('</technique_common></bind_material>')
-        f.write('</instance_geometry>')
+        f.write('</technique_common></bind_material></instance_geometry>')
         f.write('</node></visual_scene></library_visual_scenes>')
 
         f.write('<scene><instance_visual_scene url="#Scene"/></scene>')
@@ -174,31 +113,26 @@ def write_dae(path, verts, faces):
 @app.route("/convert", methods=["POST"])
 def convert():
     prims = request.json.get("prims", [])
-    V=[]; F=[]; off=0
+    V,F,off=[],[],0
 
     for p in prims:
-        t=p.get("type",0)
         sx,sy,sz=p["size"]
-        pos=p.get("pos",[0,0,0])
-        rot=p.get("rot",[0,0,0,1])
+        pos=p["pos"]
+        rot=p["rot"]
 
-        v,f=build_shape(t,sx,sy,sz)
+        v,f=build_shape(0,sx,sy,sz)
         v=[apply_rotation(vx,rot) for vx in v]
         v=[(vx+pos[0],vy+pos[1],vz+pos[2]) for vx,vy,vz in v]
 
         V.extend(v)
-        for a,b,c in f:
-            F.append((a+off,b+off,c+off))
+        for a,b,c in f: F.append((a+off,b+off,c+off))
         off+=len(v)
 
     name=str(uuid.uuid4())+".dae"
     write_dae(os.path.join(OUT,name),V,F)
-
     return jsonify({"file":name})
 
 @app.route("/output/<f>")
-def out(f):
-    return send_from_directory(OUT,f)
+def out(f): return send_from_directory(OUT,f)
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+app.run(host="0.0.0.0",port=10000)
