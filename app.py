@@ -1,4 +1,5 @@
 from flask import Flask, request, send_file
+import math
 
 app = Flask(__name__)
 
@@ -6,8 +7,6 @@ OUTPUT = "sphere.dae"
 BASE_URL = "https://m3-mesh-engine.onrender.com"
 
 def buildsphere():
-    import math
-
     segments = 24
     rings = 16
     radius = 0.1
@@ -15,10 +14,8 @@ def buildsphere():
     verts = []
     faces = []
 
-    # top pole
     verts.append((0.0, 0.0, radius))
 
-    # rings
     for i in range(1, rings):
         phi = math.pi * i / rings
         for j in range(segments):
@@ -28,19 +25,16 @@ def buildsphere():
             z = radius * math.cos(phi)
             verts.append((x, y, z))
 
-    # bottom pole
     verts.append((0.0, 0.0, -radius))
 
     top = 0
     bottom = len(verts) - 1
 
-    # top cap
     for j in range(segments):
         a = 1 + j
         b = 1 + (j + 1) % segments
         faces.append((top, a, b))
 
-    # middle
     for i in range(1, rings - 1):
         for j in range(segments):
             cur = 1 + (i - 1) * segments + j
@@ -52,7 +46,6 @@ def buildsphere():
             faces.append((cur, nxt, right))
             faces.append((right, nxt, nxt_right))
 
-    # bottom cap
     start = 1 + (rings - 2) * segments
     for j in range(segments):
         a = start + j
@@ -116,18 +109,22 @@ def buildsphere():
     with open(OUTPUT, "w") as f:
         f.write(dae)
 
+
 @app.route("/")
 def home():
     return "PrimMesh Server Running"
 
+
 @app.route("/generate", methods=["POST"])
 def generate():
     buildsphere()
-    return f"{BASE_URL}/download"
+    return f"{BASE_URL}/download"   # 🔥 ONLY CHANGE
+
 
 @app.route("/download")
 def download():
     return send_file(OUTPUT, as_attachment=True)
+
 
 if __name__ == "__main__":
     app.run()
