@@ -6,13 +6,14 @@ app = Flask(__name__)
 OUTPUT = "sphere.dae"
 
 def buildsphere():
-    segments = 16
-    rings = 12
+    segments = 20
+    rings = 16
     radius = 0.1
 
     verts = []
     faces = []
 
+    # generate vertices
     for i in range(rings + 1):
         phi = math.pi * i / rings
         for j in range(segments):
@@ -22,17 +23,20 @@ def buildsphere():
             z = radius * math.cos(phi)
             verts.append((x, y, z))
 
+    # generate faces
     for i in range(rings):
         for j in range(segments):
-            a = i * segments + j
-            b = a + segments
-            c = b + (j + 1) % segments
-            d = a + (j + 1) % segments
+            current = i * segments + j
+            next = current + segments
+
+            next_j = (j + 1) % segments
+            current_right = i * segments + next_j
+            next_right = next + next_j
 
             if i != 0:
-                faces.append((a, b, d))
+                faces.append((current, next, current_right))
             if i != rings - 1:
-                faces.append((d, b, c))
+                faces.append((current_right, next, next_right))
 
     vert_array = " ".join(f"{v[0]} {v[1]} {v[2]}" for v in verts)
     index_array = " ".join(str(i) for f in faces for i in f)
@@ -90,7 +94,6 @@ def buildsphere():
 
     with open(OUTPUT, "w") as f:
         f.write(dae)
-
 
 @app.route("/")
 def home():
