@@ -11,24 +11,22 @@ BASE_URL = "https://m3-mesh-engine.onrender.com"
 # ==========================================
 def get_profile_point(t, p_type="Square"):
     t %= 1.0
-    s = 0.05
+    s = 0.5  # Increased size for visibility
     if p_type == "Circle":
         return (s * math.cos(2 * math.pi * t), s * math.sin(2 * math.pi * t))
     elif p_type == "Triangle":
         corners = [(-s, -s), (s, -s), (0, s), (-s, -s)]
-        i = int(t * 3)
-        r = (t * 3) - i
-        p1, p2 = corners[i], corners[i+1]
-        return (p1[0] + (p2[0]-p1[0])*r, p1[1] + (p2[1]-p1[1])*r)
+        i = int(t * 3); r = (t * 3) - i
+        return (corners[i][0] + (corners[i+1][0]-corners[i][0])*r, 
+                corners[i][1] + (corners[i+1][1]-corners[i][1])*r)
     else:  # Square
         corners = [(-s, -s), (s, -s), (s, s), (-s, s), (-s, -s)]
-        i = int(t * 4)
-        r = (t * 4) - i
-        p1, p2 = corners[i], corners[i+1]
-        return (p1[0] + (p2[0]-p1[0])*r, p1[1] + (p2[1]-p1[1])*r)
+        i = int(t * 4); r = (t * 4) - i
+        return (corners[i][0] + (corners[i+1][0]-corners[i][0])*r, 
+                corners[i][1] + (corners[i+1][1]-corners[i][1])*r)
 
 # ==========================================
-# CORE ENGINE (ALL FEATURES PRESERVED)
+# CORE ENGINE (FIXED TOPOLOGY)
 # ==========================================
 def build_prim(params):
     p_type = params.get("profile", "Square")
@@ -39,11 +37,11 @@ def build_prim(params):
     shear = [float(x) for x in params.get("shear", "0,0").split(",")]
 
     verts = []
-    f_out, f_in, f_cap = [] , [], []
+    f_out, f_in, f_cap = [], [], []
 
     p_steps = 24 if p_type == "Circle" else (3 if p_type == "Triangle" else 4)
     path_steps = 32 if path_type == "Circular" else 1
-    major_r, size = 0.1, 0.1
+    major_r, size = 1.0, 1.0
 
     path_t = [cut_s]
     for i in range(1, p_steps + 1):
@@ -79,36 +77,40 @@ def build_prim(params):
                 else:
                     verts.append(((major_r + px*hollow) * cp, (major_r + px*hollow) * sp, py*hollow))
 
-    # ---------- FACE GENERATION ----------
-    vps = n * (2 if hollow > 0 else 1)
+    # ---------- FACE GENERATION (THE CUBE FIX) ----------
     def quad(group, a, b, c, d):
-        group.extend([(a, b, c), (a, c, d)])
+        group.append((a, b, c))
+        group.append((a, c, d))
 
-    for s in range(path_steps):
-        s1, s2 = s * vps, (s + 1) * vps
+    if path_type == "Linear":
+        # BRIDGE SIDES
+        b_off, t_off = 0, n
         for i in range(n - 1):
-            quad(f_out, s1+i, s1+i+1, s2+i+1, s2+i)
+            quad(f_out, b_off + i, b_off + i + 1, t_off + i + 1, t_off + i)
             if hollow > 0:
-                quad(f_in, s1+i+n+1, s1+i+n, s2+i+n, s2+i+n+1)
+                hb_off, ht_off = n, n * 3 if hollow > 0 else n # Internal logic
+                quad(f_in, hb_off + i + 1, hb_off + i, ht_off + i, ht_off + i + 1)
 
-    # Caps & Seals
-    if path_type == "Linear" and hollow == 0:
-        for i in range(1, n - 1): f_cap.append((0, i+1, i))
-        top = path_steps * vps
-        for i in range(1, n - 1): f_cap.append((top, top+i, top+i+1))
-
-    if (cut_e - cut_s) < 1.0:
-        for i in range(path_steps):
-            a, b = i * vps, (i + 1) * vps
-            quad(f_cap, a, b, b+1, a+1)
-            if hollow > 0:
-                a_e, b_e = a + (n-1), b + (n-1)
-                quad(f_cap, a_e, a_e+1, b_e+1, b_e)
+        # CAPS
+        for i in range(1, n - 1):
+            f_cap.append((0, i, i + 1)) # Bottom
+        top_start = n
+        for i in range(1, n - 1):
+            f_cap.append((top_start, top_start + i + 1, top_start + i)) # Top
+    else:
+        # TORUS LOGIC
+        vps = n * (2 if hollow > 0 else 1)
+        for s in range(path_steps):
+            s1, s2 = s * vps, (s + 1) * vps
+            for i in range(n - 1):
+                quad(f_out, s1+i, s1+i+1, s2+i+1, s2+i)
+                if hollow > 0:
+                    quad(f_in, s1+i+n+1, s1+i+n, s2+i+n, s2+i+n+1)
 
     write_dae_final(verts, f_out, f_in, f_cap)
 
 # ==========================================
-# FINAL MINIMALIST DAE WRITER
+# SL-SAFE DAE WRITER
 # ==========================================
 def write_dae_final(verts, out_f, in_f, cap_f):
     def pack(faces):
@@ -118,50 +120,28 @@ def write_dae_final(verts, out_f, in_f, cap_f):
 
     dae = f"""<?xml version="1.0" encoding="utf-8"?>
 <COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
-  <asset>
-    <unit name="meter" meter="1"/>
-    <up_axis>Z_UP</up_axis>
-  </asset>
+  <asset><unit name="meter" meter="1"/><up_axis>Z_UP</up_axis></asset>
   <library_geometries>
-    <geometry id="mesh" name="mesh">
+    <geometry id="mesh">
       <mesh>
         <source id="pos">
           <float_array id="posArr" count="{len(verts)*3}">{v_data}</float_array>
-          <technique_common>
-            <accessor source="#posArr" count="{len(verts)}" stride="3">
-              <param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/>
-            </accessor>
-          </technique_common>
+          <technique_common><accessor source="#posArr" count="{len(verts)}" stride="3">
+            <param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/>
+          </accessor></technique_common>
         </source>
         <vertices id="verts"><input semantic="POSITION" source="#pos"/></vertices>
-        <triangles material="mat0" count="{len(out_f)}">
-          <input semantic="VERTEX" source="#verts" offset="0"/>
-          <p>{pack(out_f)}</p>
-        </triangles>
-        <triangles material="mat1" count="{len(in_f)}">
-          <input semantic="VERTEX" source="#verts" offset="0"/>
-          <p>{pack(in_f)}</p>
-        </triangles>
-        <triangles material="mat2" count="{len(cap_f)}">
-          <input semantic="VERTEX" source="#verts" offset="0"/>
-          <p>{pack(cap_f)}</p>
-        </triangles>
+        <triangles material="mat0" count="{len(out_f)}"><input semantic="VERTEX" source="#verts" offset="0"/><p>{pack(out_f)}</p></triangles>
+        <triangles material="mat1" count="{len(in_f)}"><input semantic="VERTEX" source="#verts" offset="0"/><p>{pack(in_f)}</p></triangles>
+        <triangles material="mat2" count="{len(cap_f)}"><input semantic="VERTEX" source="#verts" offset="0"/><p>{pack(cap_f)}</p></triangles>
       </mesh>
     </geometry>
   </library_geometries>
-  <library_visual_scenes>
-    <visual_scene id="Scene">
-      <node id="node"><instance_geometry url="#mesh"/></node>
-    </visual_scene>
-  </library_visual_scenes>
-  <scene><instance_visual_scene url="#Scene"/></scene>
+  <library_visual_scenes><visual_scene id="S"><node id="n"><instance_geometry url="#mesh"/></node></visual_scene></library_visual_scenes>
+  <scene><instance_visual_scene url="#S"/></scene>
 </COLLADA>"""
-    with open(OUTPUT, "w") as f:
-        f.write(dae)
+    with open(OUTPUT, "w") as f: f.write(dae)
 
-# ==========================================
-# ROUTES
-# ==========================================
 @app.route("/generate", methods=["POST"])
 def generate():
     raw = request.data.decode("utf-8")
@@ -170,8 +150,7 @@ def generate():
     return f"{BASE_URL}/download"
 
 @app.route("/download")
-def download():
-    return send_file(OUTPUT, as_attachment=True)
+def download(): return send_file(OUTPUT, as_attachment=True)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
