@@ -8,193 +8,74 @@ OUTPUT = "shape.dae"
 BASE_URL = "https://m3-mesh-engine.onrender.com"
 
 # =========================
+# VERIFIED PRISM
+# =========================
+def buildprism():
+    # 7 Vertices: 4 for the base, 3 for the top ridge
+    verts = [
+        (-0.1, -0.1, -0.1), # 0
+        ( 0.1, -0.1, -0.1), # 1
+        ( 0.1,  0.1, -0.1), # 2
+        (-0.1,  0.1, -0.1), # 3
+        (-0.1, -0.1,  0.1), # 4
+        ( 0.1, -0.1,  0.1), # 5
+        ( 0.0,  0.1,  0.1)  # 6
+    ]
+    
+    # 8 Triangles
+    faces = [
+        (0, 1, 2), (0, 2, 3), # Bottom
+        (0, 4, 1), (1, 4, 5), # Front Wall
+        (0, 3, 4),            # Left Side
+        (1, 5, 2),            # Right Side
+        (3, 2, 6),            # Back Slope
+        (4, 6, 5)             # Front Slope
+    ]
+    write_dae(verts, faces)
+
+# =========================
 # REAL TUBE
 # =========================
 def buildtube():
     segments = 24
-    outer_radius = 0.12
-    inner_radius = 0.07
-    height = 0.2
-
-    top_z = height / 2
-    bottom_z = -height / 2
-
-    verts = []
-    faces = []
-
-    outer_top = []
-    outer_bottom = []
-    inner_top = []
-    inner_bottom = []
-
-    # 🔵 BUILD RINGS
-    for i in range(segments):
-        theta = 2 * math.pi * i / segments
-        cos_t = math.cos(theta)
-        sin_t = math.sin(theta)
-
-        # outer
-        outer_top.append(len(verts))
-        verts.append((outer_radius * cos_t, outer_radius * sin_t, top_z))
-
-        outer_bottom.append(len(verts))
-        verts.append((outer_radius * cos_t, outer_radius * sin_t, bottom_z))
-
-        # inner
-        inner_top.append(len(verts))
-        verts.append((inner_radius * cos_t, inner_radius * sin_t, top_z))
-
-        inner_bottom.append(len(verts))
-        verts.append((inner_radius * cos_t, inner_radius * sin_t, bottom_z))
-
-    # 🔵 OUTER WALL
-    for i in range(segments):
-        a = outer_top[i]
-        b = outer_top[(i + 1) % segments]
-        c = outer_bottom[(i + 1) % segments]
-        d = outer_bottom[i]
-        faces.append((a, d, b))
-        faces.append((b, d, c))
-
-    # 🔵 INNER WALL (reversed normals)
-    for i in range(segments):
-        a = inner_top[i]
-        b = inner_top[(i + 1) % segments]
-        c = inner_bottom[(i + 1) % segments]
-        d = inner_bottom[i]
-        faces.append((a, b, d))
-        faces.append((b, c, d))
-
-    # 🔵 TOP RING (connect outer → inner)
-    for i in range(segments):
-        a = outer_top[i]
-        b = outer_top[(i + 1) % segments]
-        c = inner_top[(i + 1) % segments]
-        d = inner_top[i]
-        faces.append((a, b, d))
-        faces.append((b, c, d))
-
-    # 🔵 BOTTOM RING
-    for i in range(segments):
-        a = outer_bottom[i]
-        b = outer_bottom[(i + 1) % segments]
-        c = inner_bottom[(i + 1) % segments]
-        d = inner_bottom[i]
-        faces.append((a, d, b))
-        faces.append((b, d, c))
-
-    write_dae(verts, faces)
-
-# =========================
-# REAL TORUS
-# =========================
-def buildtorus():
-    major_segments = 24
-    minor_segments = 16
-    major_radius = 0.25
-    minor_radius = 0.08
-    verts = []
-    faces = []
-    for i in range(major_segments):
-        theta = 2 * math.pi * i / major_segments
-        for j in range(minor_segments):
-            phi = 2 * math.pi * j / minor_segments
-            x = (major_radius + minor_radius * math.cos(phi)) * math.cos(theta)
-            y = (major_radius + minor_radius * math.cos(phi)) * math.sin(theta)
-            z = minor_radius * math.sin(phi)
-            verts.append((x, y, z))
-    for i in range(major_segments):
-        for j in range(minor_segments):
-            a = i * minor_segments + j
-            b = ((i + 1) % major_segments) * minor_segments + j
-            c = ((i + 1) % major_segments) * minor_segments + (j + 1) % minor_segments
-            d = i * minor_segments + (j + 1) % minor_segments
-            faces.append((a, b, d))
-            faces.append((b, c, d))
-    write_dae(verts, faces)
-
-# =========================
-# REAL PRISM
-# =========================
-def buildprism():
-    w, d, h = 0.1, 0.1, 0.1
-    verts = [(-w, -d, -h), (w, -d, -h), (w, d, -h), (-w, d, -h), (-w, -d, h), (w, -d, h), (0, d, h)]
-    faces = [(0,1,2),(0,2,3), (0,4,1),(1,4,5), (0,3,4), (1,5,2), (3,2,6), (4,6,5)]
-    write_dae(verts, faces)
-
-# =========================
-# LOCKED SPHERE
-# =========================
-def buildsphere():
-    segments, rings, radius = 24, 16, 0.1
-    verts = []
-    faces = []
-    verts.append((0.0, 0.0, radius))
-    for i in range(1, rings):
-        phi = math.pi * i / rings
-        for j in range(segments):
-            theta = 2 * math.pi * j / segments
-            x = radius * math.sin(phi) * math.cos(theta)
-            y = radius * math.sin(phi) * math.sin(theta)
-            z = radius * math.cos(phi)
-            verts.append((x, y, z))
-    verts.append((0.0, 0.0, -radius))
-    top, bottom = 0, len(verts) - 1
-    for j in range(segments):
-        faces.append((top, 1 + j, 1 + (j + 1) % segments))
-    for i in range(1, rings - 1):
-        for j in range(segments):
-            cur = 1 + (i - 1) * segments + j
-            nxt = cur + segments
-            right = 1 + (i - 1) * segments + (j + 1) % segments
-            nxt_right = right + segments
-            faces.append((cur, nxt, right))
-            faces.append((right, nxt, nxt_right))
-    start = 1 + (rings - 2) * segments
-    for j in range(segments):
-        faces.append((start + j, bottom, start + (j + 1) % segments))
-    write_dae(verts, faces)
-
-# =========================
-# REAL CYLINDER
-# =========================
-def buildcylinder():
-    segments, radius, height = 24, 0.1, 0.2
+    outer_r, inner_r, h = 0.12, 0.07, 0.2
+    top_z, bot_z = h/2, -h/2
     verts, faces = [], []
-    top_z, bottom_z = height / 2, -height / 2
-    top_center, bottom_center = len(verts), len(verts) + 1
-    verts.extend([(0.0, 0.0, top_z), (0.0, 0.0, bottom_z)])
-    top_ring, bottom_ring = [], []
+
     for i in range(segments):
         theta = 2 * math.pi * i / segments
-        x, y = radius * math.cos(theta), radius * math.sin(theta)
-        top_ring.append(len(verts))
-        verts.append((x, y, top_z))
-        bottom_ring.append(len(verts))
-        verts.append((x, y, bottom_z))
+        c, s = math.cos(theta), math.sin(theta)
+        verts.extend([
+            (outer_r * c, outer_r * s, top_z), # OT
+            (outer_r * c, outer_r * s, bot_z), # OB
+            (inner_r * c, inner_r * s, top_z), # IT
+            (inner_r * c, inner_r * s, bot_z)  # IB
+        ])
+
     for i in range(segments):
-        faces.append((top_center, top_ring[i], top_ring[(i + 1) % segments]))
-        faces.append((bottom_center, bottom_ring[(i + 1) % segments], bottom_ring[i]))
-        t1, t2 = top_ring[i], top_ring[(i + 1) % segments]
-        b1, b2 = bottom_ring[i], bottom_ring[(i + 1) % segments]
-        faces.append((t1, b1, t2))
-        faces.append((t2, b1, b2))
+        curr, nxt = i * 4, ((i + 1) % segments) * 4
+        faces.extend([
+            (curr+0, curr+1, nxt+0), (nxt+0, curr+1, nxt+1), # Outer
+            (curr+2, nxt+2, curr+3), (nxt+2, nxt+3, curr+3), # Inner
+            (curr+0, nxt+0, curr+2), (nxt+0, nxt+2, curr+2), # Top Rim
+            (curr+1, curr+3, nxt+1), (nxt+1, curr+3, nxt+3)  # Bot Rim
+        ])
     write_dae(verts, faces)
 
 # =========================
-# DAE WRITER
+# DAE WRITER UTILITY
 # =========================
 def write_dae(verts, faces):
-    vert_array = " ".join(f"{x} {y} {z}" for (x, y, z) in verts)
-    index_array = " ".join(str(i) for f in faces for i in f)
+    v_str = " ".join(f"{v[0]} {v[1]} {v[2]}" for v in verts)
+    i_str = " ".join(f"{f[0]} {f[1]} {f[2]}" for f in faces)
     dae = f"""<?xml version="1.0" encoding="utf-8"?>
 <COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
   <asset><unit name="meter" meter="1"/><up_axis>Z_UP</up_axis></asset>
   <library_geometries>
-    <geometry id="mesh" name="mesh">
+    <geometry id="mesh">
       <mesh>
         <source id="pos">
-          <float_array id="posArr" count="{len(verts)*3}">{vert_array}</float_array>
+          <float_array id="posArr" count="{len(verts)*3}">{v_str}</float_array>
           <technique_common>
             <accessor source="#posArr" count="{len(verts)}" stride="3">
               <param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/>
@@ -204,7 +85,7 @@ def write_dae(verts, faces):
         <vertices id="verts"><input semantic="POSITION" source="#pos"/></vertices>
         <triangles count="{len(faces)}">
           <input semantic="VERTEX" source="#verts" offset="0"/>
-          <p>{index_array}</p>
+          <p>{i_str}</p>
         </triangles>
       </mesh>
     </geometry>
@@ -214,25 +95,17 @@ def write_dae(verts, faces):
   </library_visual_scenes>
   <scene><instance_visual_scene url="#Scene"/></scene>
 </COLLADA>"""
-    with open(OUTPUT, "w") as f:
-        f.write(dae)
+    with open(OUTPUT, "w") as f: f.write(dae)
 
 # =========================
-# API
+# API ROUTES
 # =========================
-@app.route("/")
-def home():
-    return "PrimMesh Server Running"
-
 @app.route("/generate", methods=["POST"])
 def generate():
     data = request.data.decode("utf-8")
-    if "Cylinder" in data: buildcylinder()
-    elif "Torus" in data: buildtorus()
-    elif "Prism" in data: buildprism()
+    if "Prism" in data: buildprism()
     elif "Tube" in data: buildtube()
-    elif "Sphere" in data: buildsphere()
-    else: buildsphere()
+    else: buildprism() # Default
     return f"{BASE_URL}/download"
 
 @app.route("/download")
