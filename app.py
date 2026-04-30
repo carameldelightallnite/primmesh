@@ -8,6 +8,44 @@ BASE_URL = "https://m3-mesh-engine.onrender.com"
 
 
 # =========================
+# REAL TORUS
+# =========================
+def buildtorus():
+    major_segments = 24
+    minor_segments = 16
+
+    major_radius = 0.2
+    minor_radius = 0.05
+
+    verts = []
+    faces = []
+
+    for i in range(major_segments):
+        theta = 2 * math.pi * i / major_segments
+
+        for j in range(minor_segments):
+            phi = 2 * math.pi * j / minor_segments
+
+            x = (major_radius + minor_radius * math.cos(phi)) * math.cos(theta)
+            y = (major_radius + minor_radius * math.cos(phi)) * math.sin(theta)
+            z = minor_radius * math.sin(phi)
+
+            verts.append((x, y, z))
+
+    for i in range(major_segments):
+        for j in range(minor_segments):
+            a = i * minor_segments + j
+            b = ((i + 1) % major_segments) * minor_segments + j
+            c = ((i + 1) % major_segments) * minor_segments + (j + 1) % minor_segments
+            d = i * minor_segments + (j + 1) % minor_segments
+
+            faces.append((a, b, d))
+            faces.append((b, c, d))
+
+    write_dae(verts, faces)
+
+
+# =========================
 # LOCKED SPHERE (UNCHANGED)
 # =========================
 def buildsphere():
@@ -60,7 +98,7 @@ def buildsphere():
 
 
 # =========================
-# REAL CYLINDER (VERIFIED)
+# REAL CYLINDER
 # =========================
 def buildcylinder():
     segments = 24
@@ -93,23 +131,19 @@ def buildcylinder():
         bottom_ring.append(len(verts))
         verts.append((x, y, bottom_z))
 
-    # top cap
     for i in range(segments):
         a = top_ring[i]
         b = top_ring[(i + 1) % segments]
         faces.append((top_center, a, b))
 
-    # bottom cap
     for i in range(segments):
         a = bottom_ring[i]
         b = bottom_ring[(i + 1) % segments]
         faces.append((bottom_center, b, a))
 
-    # sides
     for i in range(segments):
         t1 = top_ring[i]
         t2 = top_ring[(i + 1) % segments]
-
         b1 = bottom_ring[i]
         b2 = bottom_ring[(i + 1) % segments]
 
@@ -182,7 +216,7 @@ def write_dae(verts, faces):
 
 
 # =========================
-# API (SINGLE ROUTE — FINAL)
+# API (FIXED — SINGLE ROUTE)
 # =========================
 @app.route("/")
 def home():
@@ -195,6 +229,13 @@ def generate():
 
     if "Cylinder" in data:
         buildcylinder()
+
+    elif "Torus" in data:
+        buildtorus()
+
+    elif "Sphere" in data:
+        buildsphere()
+
     else:
         buildsphere()
 
