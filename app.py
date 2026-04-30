@@ -8,7 +8,7 @@ BASE_URL = "https://m3-mesh-engine.onrender.com"
 
 
 # =========================
-# LOCKED SPHERE (DO NOT TOUCH)
+# LOCKED SPHERE (UNCHANGED)
 # =========================
 def buildsphere():
     segments = 24
@@ -60,7 +60,7 @@ def buildsphere():
 
 
 # =========================
-# REAL CYLINDER
+# REAL CYLINDER (VERIFIED)
 # =========================
 def buildcylinder():
     segments = 24
@@ -73,17 +73,15 @@ def buildcylinder():
     top_z = height / 2
     bottom_z = -height / 2
 
-    # centers
     top_center = len(verts)
-    verts.append((0, 0, top_z))
+    verts.append((0.0, 0.0, top_z))
 
     bottom_center = len(verts)
-    verts.append((0, 0, bottom_z))
+    verts.append((0.0, 0.0, bottom_z))
 
     top_ring = []
     bottom_ring = []
 
-    # rings
     for i in range(segments):
         theta = 2 * math.pi * i / segments
         x = radius * math.cos(theta)
@@ -184,7 +182,7 @@ def write_dae(verts, faces):
 
 
 # =========================
-# API (FIXED — SINGLE ROUTE)
+# API (SINGLE ROUTE — FINAL)
 # =========================
 @app.route("/")
 def home():
@@ -197,8 +195,6 @@ def generate():
 
     if "Cylinder" in data:
         buildcylinder()
-    elif "Sphere" in data:
-        buildsphere()
     else:
         buildsphere()
 
