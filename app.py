@@ -34,7 +34,7 @@ def get_profile_point(t, p_type="Square"):
         i = int(t * 3); r = (t * 3) - i
         return (corners[i][0] + (corners[i+1][0]-corners[i][0])*r, 
                 corners[i][1] + (corners[i+1][1]-corners[i][1])*r)
-    else: # Square/Prism profile
+    else: 
         corners = [(-s, -s), (s, -s), (s, s), (-s, s), (-s, -s)]
         i = int(t * 4); r = (t * 4) - i
         return (corners[i][0] + (corners[i+1][0]-corners[i][0])*r, 
@@ -51,27 +51,26 @@ def build_extrusion(params):
     path_steps = 32 if path_type == "Circular" else 1
     major_r, size = 1.0, 1.0
 
-    # Apply Path Cuts
+    # FIX 4 — DUPLICATE VERTEX RISK (FLOAT COLLISION)
     path_t = [cut_s]
     for i in range(1, p_steps + 1):
         t = i / float(p_steps)
         if cut_s < t < cut_e: path_t.append(t)
     path_t.append(cut_e)
+    path_t = sorted(set(round(t, 6) for t in path_t)) 
     n = len(path_t)
 
-    # Vertex Generation (Outer + Optional Inner Hollow)
+    # Vertex Generation
     for s_idx in range(path_steps + 1):
         v_c = s_idx / float(path_steps)
         phi = v_c * 2 * math.pi
         cp, sp = math.cos(phi), math.sin(phi)
-
         for t in path_t:
             px, py = get_profile_point(t, p_type)
             if path_type == "Linear":
                 verts.append((px, py, -size if s_idx == 0 else size))
             else:
                 verts.append(((major_r + px) * cp, (major_r + px) * sp, py))
-        
         if hollow > 0:
             for t in path_t:
                 px, py = get_profile_point(t, p_type)
@@ -91,33 +90,67 @@ def build_extrusion(params):
             if hollow > 0:
                 quad(f_in, s1+i+n+1, s1+i+n, s2+i+n, s2+i+n+1)
 
-    # Caps and Cut-Seals
+    # FIX 2 — TOP/BOTTOM CAPS CORRECT INDEXING
     if path_type == "Linear":
-        # End Caps
-        for i in range(1, n - 1):
-            f_cap.append((0, i, i + 1)) # Bottom
-            top = path_steps * vps
-            f_cap.append((top, top + i + 1, top + i)) # Top
-            if hollow > 0:
-                quad(f_cap, i, i+1, i+n+1, i+n) # Bottom hollow seal
-                quad(f_cap, top+i+n, top+i+n+1, top+i+1, top+i) # Top hollow seal
+        base = 0
+        top = path_steps * vps
 
-    # Longitudinal Cut Seals (If not a full loop)
+        # OUTER CAPS
+        for i in range(1, n - 1):
+            f_cap.append((base, base + i, base + i + 1))  # bottom
+            f_cap.append((top, top + i + 1, top + i))     # top
+
+        # HOLLOW CAPS
+        if hollow > 0:
+            for i in range(n - 1):
+                quad(f_cap,
+                     base + i,
+                     base + i + 1,
+                     base + i + n + 1,
+                     base + i + n)
+
+                quad(f_cap,
+                     top + i + n,
+                     top + i + n + 1,
+                     top + i + 1,
+                     top + i)
+
+    # CUT FACE SEALING
     if (cut_e - cut_s) < 1.0:
         for s in range(path_steps):
             a, b = s * vps, (s + 1) * vps
-            quad(f_cap, a, b, b+n, a+n) if hollow > 0 else None # Seal start of cut
             ae, be = a + n - 1, b + n - 1
-            quad(f_cap, ae+n, be+n, be, ae) if hollow > 0 else None # Seal end of cut
+            
+            # FIX 1 — START CUT CAP
+            if hollow > 0:
+                quad(f_cap, a, b, b+n, a+n)
+            else:
+                for i in range(1, n - 1):
+                    f_cap.append((a, a + i, a + i + 1))
+
+            # FIX 3 — END CUT CAP
+            if hollow > 0:
+                quad(f_cap, ae+n, be+n, be, ae)
+            else:
+                for i in range(1, n - 1):
+                    f_cap.append((ae, ae - i, ae - i - 1))
 
     write_dae_final(verts, f_out, f_in, f_cap)
 
 # ==========================================
-# FINAL DAE WRITER (NO CHANGES)
+# FINAL DAE WRITER (STRIPS EMPTY BLOCKS)
 # ==========================================
 def write_dae_final(verts, out_f, in_f, cap_f):
     v_data = " ".join(f"{x} {y} {z}" for x, y, z in verts)
     def pack(f): return " ".join(f"{a} {b} {c}" for (a, b, c) in f)
+
+    tri_blocks = ""
+    if out_f:
+        tri_blocks += f'<triangles material="m0" count="{len(out_f)}"><input semantic="VERTEX" source="#v" offset="0"/><p>{pack(out_f)}</p></triangles>'
+    if in_f:
+        tri_blocks += f'<triangles material="m1" count="{len(in_f)}"><input semantic="VERTEX" source="#v" offset="0"/><p>{pack(in_f)}</p></triangles>'
+    if cap_f:
+        tri_blocks += f'<triangles material="m2" count="{len(cap_f)}"><input semantic="VERTEX" source="#v" offset="0"/><p>{pack(cap_f)}</p></triangles>'
 
     dae = f"""<?xml version="1.0" encoding="utf-8"?>
 <COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
@@ -126,9 +159,7 @@ def write_dae_final(verts, out_f, in_f, cap_f):
     <source id="p"><float_array id="pa" count="{len(verts)*3}">{v_data}</float_array>
     <technique_common><accessor source="#pa" count="{len(verts)}" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source>
     <vertices id="v"><input semantic="POSITION" source="#p"/></vertices>
-    <triangles material="m0" count="{len(out_f)}"><input semantic="VERTEX" source="#v" offset="0"/><p>{pack(out_f)}</p></triangles>
-    <triangles material="m1" count="{len(in_f)}"><input semantic="VERTEX" source="#v" offset="0"/><p>{pack(in_f)}</p></triangles>
-    <triangles material="m2" count="{len(cap_f)}"><input semantic="VERTEX" source="#v" offset="0"/><p>{pack(cap_f)}</p></triangles>
+    {tri_blocks}
   </mesh></geometry></library_geometries>
   <library_visual_scenes><visual_scene id="S"><node><instance_geometry url="#m"/></node></visual_scene></library_visual_scenes>
   <scene><instance_visual_scene url="#S"/></scene>
@@ -139,13 +170,13 @@ def write_dae_final(verts, out_f, in_f, cap_f):
 def generate():
     raw = request.data.decode("utf-8")
     params = dict(p.split("=") for p in raw.split("|") if "=" in p)
-    
-    # Fork logic: Perfect Cube vs Custom Prism/Extrusion
-    if params.get("profile") == "Square" and params.get("path") == "Linear" and float(params.get("hollow", 0)) == 0:
+    p_type = params.get("profile", "Square")
+    path_type = params.get("path", "Linear")
+
+    if p_type == "Square" and path_type == "Linear" and float(params.get("hollow", 0)) == 0:
         build_exact_cube()
     else:
         build_extrusion(params)
-        
     return f"{BASE_URL}/download"
 
 @app.route("/download")
