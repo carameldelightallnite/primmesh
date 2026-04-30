@@ -8,14 +8,14 @@ BASE_URL = "https://m3-mesh-engine.onrender.com"
 
 
 # =========================
-# REAL TORUS
+# REAL TORUS (ADDED)
 # =========================
 def buildtorus():
     major_segments = 24
     minor_segments = 16
 
-    major_radius = 0.2
-    minor_radius = 0.05
+    major_radius = 0.25
+    minor_radius = 0.08
 
     verts = []
     faces = []
@@ -34,6 +34,7 @@ def buildtorus():
 
     for i in range(major_segments):
         for j in range(minor_segments):
+
             a = i * minor_segments + j
             b = ((i + 1) % major_segments) * minor_segments + j
             c = ((i + 1) % major_segments) * minor_segments + (j + 1) % minor_segments
@@ -98,7 +99,7 @@ def buildsphere():
 
 
 # =========================
-# REAL CYLINDER
+# REAL CYLINDER (UNCHANGED)
 # =========================
 def buildcylinder():
     segments = 24
@@ -216,7 +217,7 @@ def write_dae(verts, faces):
 
 
 # =========================
-# API (FIXED — SINGLE ROUTE)
+# API (UPDATED — TORUS ADDED, NOTHING REMOVED)
 # =========================
 @app.route("/")
 def home():
