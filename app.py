@@ -7,13 +7,40 @@ OUTPUT = "shape.dae"
 BASE_URL = "https://m3-mesh-engine.onrender.com"
 
 # ==========================================
-# EXACT SHAPE BUILDER (PERFECT BOX)
+# NORMAL GENERATION ENGINE (AAA QUALITY)
+# ==========================================
+def compute_normals(verts, faces):
+    """Calculates smoothed vertex normals for consistent SL shading."""
+    normals = [[0.0, 0.0, 0.0] for _ in range(len(verts))]
+
+    for a, b, c in faces:
+        v1, v2, v3 = verts[a], verts[b], verts[c]
+        # Cross product to find face normal
+        ux, uy, uz = v2[0]-v1[0], v2[1]-v1[1], v2[2]-v1[2]
+        vx, vy, vz = v3[0]-v1[0], v3[1]-v1[1], v3[2]-v1[2]
+        nx = uy*vz - uz*vy
+        ny = uz*vx - ux*vz
+        nz = ux*vy - uy*vx
+        # Accumulate into vertices
+        for i in (a, b, c):
+            normals[i][0] += nx
+            normals[i][1] += ny
+            normals[i][2] += nz
+
+    # Normalize vectors
+    result = []
+    for n in normals:
+        mag = math.sqrt(n[0]**2 + n[1]**2 + n[2]**2) or 1.0
+        result.append((n[0]/mag, n[1]/mag, n[2]/mag))
+    return result
+
+# ==========================================
+# EXACT SHAPE BUILDER (CLEAN 8-VERTEX CUBE)
 # ==========================================
 def build_exact_cube():
-    """Builds a 100% perfect cube with no center vertex (No Nipples)."""
     verts = [
-        (-0.5,-0.5,-0.5), (0.5,-0.5,-0.5), (0.5,0.5,-0.5), (-0.5,0.5,-0.5),
-        (-0.5,-0.5, 0.5), (0.5,-0.5, 0.5), (0.5,0.5, 0.5), (-0.5,0.5, 0.5)
+        (-0.5,-0.5,-1.0), (0.5,-0.5,-1.0), (0.5,0.5,-1.0), (-0.5,0.5,-1.0),
+        (-0.5,-0.5, 1.0), (0.5,-0.5, 1.0), (0.5,0.5, 1.0), (-0.5,0.5, 1.0)
     ]
     f_out = [
         (0,1,2), (0,2,3), (4,6,5), (4,7,6), (0,4,5), (0,5,1),
@@ -51,14 +78,12 @@ def build_extrusion(params):
     path_steps = 32 if path_type == "Circular" else 1
     major_r, size = 1.0, 1.0
 
-    # FIX 4 — DUPLICATE VERTEX RISK
     path_t = sorted(set(round(t, 6) for t in [cut_s] + [i/p_steps for i in range(1, p_steps)] + [cut_e] if cut_s <= round(t, 6) <= cut_e))
     n = len(path_t)
 
     for s_idx in range(path_steps + 1):
         v_c = s_idx / float(path_steps)
-        phi = v_c * 2 * math.pi
-        cp, sp = math.cos(phi), math.sin(phi)
+        phi, cp, sp = v_c * 2 * math.pi, math.cos(v_c * 2 * math.pi), math.sin(v_c * 2 * math.pi)
         for t in path_t:
             px, py = get_profile_point(t, p_type)
             if path_type == "Linear":
@@ -86,12 +111,12 @@ def build_extrusion(params):
     if path_type == "Linear":
         base, top = 0, path_steps * vps
         for i in range(1, n - 1):
-            f_cap.append((base, base + i, base + i + 1))  # bottom
-            f_cap.append((top, top + i + 1, top + i))     # top
+            f_cap.append((base, base + i, base + i + 1))
+            f_cap.append((top, top + i + 1, top + i))
         if hollow > 0:
             for i in range(n - 1):
-                quad(f_cap, base + i, base + i + 1, base + i + n + 1, base + i + n)
-                quad(f_cap, top + i + n, top + i + n + 1, top + i + 1, top + i)
+                quad(f_cap, base+i, base+i+1, base+i+n+1, base+i+n)
+                quad(f_cap, top+i+n, top+i+n+1, top+i+1, top+i)
 
     if (cut_e - cut_s) < 1.0:
         for s in range(path_steps):
@@ -108,18 +133,32 @@ def build_extrusion(params):
     write_dae_final(verts, f_out, f_in, f_cap)
 
 # ==========================================
-# FINAL DAE WRITER (FULL MATERIAL BINDING)
+# FINAL DAE WRITER (INDEX OFFSET FIX)
 # ==========================================
 def write_dae_final(verts, out_f, in_f, cap_f):
     v_data = " ".join(f"{x} {y} {z}" for x, y, z in verts)
-    def pack(f): return " ".join(f"{a} {b} {c}" for (a, b, c) in f)
+    
+    # Compute Normals
+    all_faces = out_f + in_f + cap_f
+    normals = compute_normals(verts, all_faces)
+    n_data = " ".join(f"{x} {y} {z}" for x, y, z in normals)
 
-    m_ids = [("mat0", out_f), ("mat1", in_f), ("mat2", cap_f)]
+    # Pack interleaved indices: v n v n v n
+    def pack_vn(f): 
+        return " ".join(f"{idx} {idx}" for triple in f for idx in triple)
+
     tri_blocks, effects, materials, binds = "", "", "", ""
+    m_slots = [("mat0", out_f), ("mat1", in_f), ("mat2", cap_f)]
 
-    for m_id, faces in m_ids:
+    for m_id, faces in m_slots:
         if faces:
-            tri_blocks += f'<triangles material="{m_id}" count="{len(faces)}"><input semantic="VERTEX" source="#v" offset="0"/><p>{pack(faces)}</p></triangles>'
+            # FIX: Vertex offset 0, Normal offset 1
+            tri_blocks += f"""
+        <triangles material="{m_id}" count="{len(faces)}">
+          <input semantic="VERTEX" source="#v" offset="0"/>
+          <input semantic="NORMAL" source="#n" offset="1"/>
+          <p>{pack_vn(faces)}</p>
+        </triangles>"""
             effects += f'<effect id="{m_id}-fx"><profile_COMMON><technique sid="common"><lambert><diffuse><color>0.8 0.8 0.8 1</color></diffuse></lambert></technique></profile_COMMON></effect>'
             materials += f'<material id="{m_id}" name="{m_id}"><instance_effect url="#{m_id}-fx"/></material>'
             binds += f'<instance_material symbol="{m_id}" target="#{m_id}"/>'
@@ -130,9 +169,16 @@ def write_dae_final(verts, out_f, in_f, cap_f):
   <library_effects>{effects}</library_effects>
   <library_materials>{materials}</library_materials>
   <library_geometries><geometry id="m"><mesh>
-    <source id="p"><float_array id="pa" count="{len(verts)*3}">{v_data}</float_array>
-    <technique_common><accessor source="#pa" count="{len(verts)}" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source>
-    <vertices id="v"><input semantic="POSITION" source="#p"/></vertices>{tri_blocks}
+    <source id="p">
+      <float_array id="pa" count="{len(verts)*3}">{v_data}</float_array>
+      <technique_common><accessor source="#pa" count="{len(verts)}" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common>
+    </source>
+    <source id="n">
+      <float_array id="na" count="{len(normals)*3}">{n_data}</float_array>
+      <technique_common><accessor source="#na" count="{len(normals)}" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common>
+    </source>
+    <vertices id="v"><input semantic="POSITION" source="#p"/></vertices>
+    {tri_blocks}
   </mesh></geometry></library_geometries>
   <library_visual_scenes><visual_scene id="S"><node><instance_geometry url="#m"><bind_material><technique_common>{binds}</technique_common></bind_material></instance_geometry></node></visual_scene></library_visual_scenes>
   <scene><instance_visual_scene url="#S"/></scene>
