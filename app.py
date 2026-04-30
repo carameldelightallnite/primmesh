@@ -71,8 +71,16 @@ def home():
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    builddae()
-    return send_file(OUTPUT, as_attachment=True)
+    try:
+        data = request.get_json(force=True)
+        print("Received:", data)
+
+        builddae()
+
+        return send_file(OUTPUT, as_attachment=True)
+
+    except Exception as e:
+        return str(e)
 
 if __name__ == "__main__":
     app.run()
