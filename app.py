@@ -13,7 +13,6 @@ def buildsphere():
     verts = []
     faces = []
 
-    # generate vertices
     for i in range(rings + 1):
         phi = math.pi * i / rings
         for j in range(segments):
@@ -23,24 +22,22 @@ def buildsphere():
             z = radius * math.cos(phi)
             verts.append((x, y, z))
 
-    # generate faces
     for i in range(rings):
         for j in range(segments):
             a = i * segments + j
             b = a + segments
-            c = b + 1 if (j + 1) < segments else b + 1 - segments
-            d = a + 1 if (j + 1) < segments else a + 1 - segments
+            c = b + (j + 1) % segments
+            d = a + (j + 1) % segments
 
             if i != 0:
                 faces.append((a, b, d))
             if i != rings - 1:
                 faces.append((d, b, c))
 
-    # flatten arrays
     vert_array = " ".join(f"{v[0]} {v[1]} {v[2]}" for v in verts)
     index_array = " ".join(str(i) for f in faces for i in f)
 
-    dae = f'''<?xml version="1.0" encoding="utf-8"?>
+    dae = f"""<?xml version="1.0" encoding="utf-8"?>
 <COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
   <asset>
     <unit name="meter" meter="1"/>
@@ -51,12 +48,12 @@ def buildsphere():
     <geometry id="sphere" name="sphere">
       <mesh>
 
-        <source id="pos">
-          <float_array id="posArr" count="{len(verts)*3}">
+        <source id="sphere-pos">
+          <float_array id="sphere-arr" count="{len(verts)*3}">
             {vert_array}
           </float_array>
           <technique_common>
-            <accessor source="#posArr" count="{len(verts)}" stride="3">
+            <accessor source="#sphere-arr" count="{len(verts)}" stride="3">
               <param name="X" type="float"/>
               <param name="Y" type="float"/>
               <param name="Z" type="float"/>
@@ -64,12 +61,12 @@ def buildsphere():
           </technique_common>
         </source>
 
-        <vertices id="verts">
-          <input semantic="POSITION" source="#pos"/>
+        <vertices id="sphere-verts">
+          <input semantic="POSITION" source="#sphere-pos"/>
         </vertices>
 
         <triangles count="{len(faces)}">
-          <input semantic="VERTEX" source="#verts" offset="0"/>
+          <input semantic="VERTEX" source="#sphere-verts" offset="0"/>
           <p>{index_array}</p>
         </triangles>
 
@@ -78,8 +75,8 @@ def buildsphere():
   </library_geometries>
 
   <library_visual_scenes>
-    <visual_scene id="Scene">
-      <node id="sphereNode">
+    <visual_scene id="Scene" name="Scene">
+      <node id="sphere-node" name="sphere">
         <instance_geometry url="#sphere"/>
       </node>
     </visual_scene>
@@ -88,10 +85,12 @@ def buildsphere():
   <scene>
     <instance_visual_scene url="#Scene"/>
   </scene>
-</COLLADA>'''
+</COLLADA>
+"""
 
     with open(OUTPUT, "w") as f:
         f.write(dae)
+
 
 @app.route("/")
 def home():
